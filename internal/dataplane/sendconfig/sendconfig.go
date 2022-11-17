@@ -83,24 +83,25 @@ func PerformUpdate(ctx context.Context,
 
 	var metricsProtocol string
 	timeStart := time.Now()
-	if inMemory {
-		metricsProtocol = metrics.ProtocolDBLess
-		err = onUpdateInMemoryMode(ctx, log, targetContent, customEntities, kongConfig)
+	syncKonnect := os.Getenv("KONG_SYNC_WITH_KONNECT") == "true"
+	if !syncKonnect {
+		if inMemory {
+			metricsProtocol = metrics.ProtocolDBLess
+			err = onUpdateInMemoryMode(ctx, log, targetContent, customEntities, kongConfig)
+		} else {
+			metricsProtocol = metrics.ProtocolDeck
+			err = onUpdateDBMode(ctx, targetContent, kongConfig, selectorTags, skipCACertificates)
+		}
+		log.Info("not syncing with konnect")
 	} else {
-		metricsProtocol = metrics.ProtocolDeck
-		err = onUpdateDBMode(ctx, targetContent, kongConfig, selectorTags, skipCACertificates)
-	}
-	timeEnd := time.Now()
-
-	if os.Getenv("KONG_SYNC_WITH_KONNECT") == "true" {
 		if err := syncWithKonnect(ctx, targetContent, kongConfig, skipCACertificates); err != nil {
 			log.WithError(err).Error("failed to sync with Konnect")
 		} else {
 			log.Info("synchronised with Konnect")
 		}
-	} else {
-		log.Info("not syncing with konnect")
 	}
+
+	timeEnd := time.Now()
 
 	if err != nil {
 		promMetrics.ConfigPushCount.With(prometheus.Labels{
