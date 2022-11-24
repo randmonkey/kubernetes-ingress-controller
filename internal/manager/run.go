@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"time"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/blang/semver/v4"
+	"github.com/google/uuid"
 	"github.com/kong/go-kong/kong"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/controllers/gateway"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/dataplane"
+	"github.com/kong/kubernetes-ingress-controller/v2/internal/konnect"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/manager/metadata"
 	mgrutils "github.com/kong/kubernetes-ingress-controller/v2/internal/manager/utils"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/util"
@@ -166,6 +169,20 @@ func Run(ctx context.Context, c *Config, diagnostic util.ConfigDumpDiagnostic, d
 	if enabled, ok := featureGates[combinedRoutesFeature]; ok && enabled {
 		dataplaneClient.EnableCombinedServiceRoutes()
 		setupLog.Info("combined routes mode has been enabled")
+	}
+
+	if os.Getenv("CONTROLLER_KONNECT_RUNTIME_INSTANCE") == "true" {
+		hostname, _ := os.Hostname()
+		agent := &konnect.RuntimeInstanceAgent{
+			Address:     os.Getenv("KONNECT_CONTROL_PLANE_ADDRESS"),
+			TLSCertPath: os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.crt",
+			TLSKeyPath:  os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.key",
+			Hostname:    hostname,
+			NodeID:      uuid.NewString(),
+			KongVersion: "3.0.1.0",
+			Logger:      setupLog.WithName("konnect-runtime-instance"),
+		}
+		agent.Run()
 	}
 
 	var kubernetesStatusQueue *status.Queue

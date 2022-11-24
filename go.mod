@@ -20,6 +20,7 @@ require (
 	github.com/go-logr/logr v1.2.3
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/kong/deck v1.16.1
 	github.com/kong/go-kong v0.33.0
 	github.com/kong/kubernetes-testing-framework v0.24.1
