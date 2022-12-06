@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/blang/semver/v4"
-	"github.com/google/uuid"
 	"github.com/kong/go-kong/kong"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -173,14 +173,24 @@ func Run(ctx context.Context, c *Config, diagnostic util.ConfigDumpDiagnostic, d
 
 	if os.Getenv("CONTROLLER_KONNECT_RUNTIME_INSTANCE") == "true" {
 		hostname, _ := os.Hostname()
+		konnectRILogger := setupLog.WithName("konnect-runtime-instance")
+		// get service for admin API of kong proxy.
+		serviceParts := strings.Split(c.PublishService, "/")
+		if len(serviceParts) != 2 {
+			konnectRILogger.Error(fmt.Errorf("publish service is invalid, expecting <namespace>/<name>"), "service", c.PublishService)
+		}
 		agent := &konnect.RuntimeInstanceAgent{
 			Address:     os.Getenv("KONNECT_CONTROL_PLANE_ADDRESS"),
 			TLSCertPath: os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.crt",
 			TLSKeyPath:  os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.key",
+			ClusterID:   os.Getenv("KONNECT_CLUSTER_ID"),
 			Hostname:    hostname,
-			NodeID:      uuid.NewString(),
 			KongVersion: "3.0.1.0",
-			Logger:      setupLog.WithName("konnect-runtime-instance"),
+			Logger:      konnectRILogger,
+
+			ServiceName:      serviceParts[1],
+			ServiceNamespace: serviceParts[0],
+			K8sClient:        mgr.GetClient(),
 		}
 		agent.Run()
 	}
