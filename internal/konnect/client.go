@@ -36,7 +36,7 @@ func (c *AdminClient) CreateNode(req *CreateNodeRequest) (*CreateNodeResponse, e
 	}
 
 	if httpResp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("non-success response code from Koko: %d", httpResp.StatusCode)
+		return nil, fmt.Errorf("non-success response code from Koko: %d, resp body: %s", httpResp.StatusCode, string(respBuf))
 		// TODO: parse returned body to return a more detailed error
 	}
 
@@ -72,7 +72,7 @@ func (c *AdminClient) UpdateNode(nodeID string, req *UpdateNodeRequest) (*Update
 	}
 
 	if httpResp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("non-success response code from Koko: %d", httpResp.StatusCode)
+		return nil, fmt.Errorf("non-success response code from Koko: %d, resp body %s", httpResp.StatusCode, string(respBuf))
 	}
 
 	resp := &UpdateNodeResponse{}
@@ -97,8 +97,7 @@ func (c *AdminClient) ListNodes() (*ListNodeResponse, error) {
 	}
 
 	if httpResp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("non-success response from Koko: %d", httpResp.StatusCode)
-
+		return nil, fmt.Errorf("non-success response from Koko: %d, resp body %s", httpResp.StatusCode, string(respBuf))
 	}
 
 	resp := &ListNodeResponse{}

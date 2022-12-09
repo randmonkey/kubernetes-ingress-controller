@@ -41,17 +41,40 @@ type RuntimeInstanceAgent struct {
 	adminClient *AdminClient
 }
 
+// createNode creates the node representing kuberenetes ingress controller itself.
 func (a *RuntimeInstanceAgent) createNode() error {
+	// remove existing node with type "ingress-controller".
+	nodes, err := a.adminClient.ListNodes()
+	if err != nil {
+		return fmt.Errorf("failed to list existing nodes: %v", err)
+	}
+
+	for _, node := range nodes.Items {
+		if node.Type == NodeTypeIngressController {
+			// TODO: judge whether we should delete this node.
+			err := a.adminClient.DeleteNode(node.ID)
+			if err != nil {
+				return fmt.Errorf("failed to delete outdated node %s: %v", node.ID, err)
+			}
+			a.Logger.Info("deleted outdated node for KIC", "node_hostname", node.Hostname, "node_id", node.ID, "cluster_id", a.ClusterID)
+		}
+	}
+
 	createNodeReq := &CreateNodeRequest{
 		ID:       a.NodeID,
 		Hostname: a.Hostname,
 		Type:     NodeTypeIngressController,
 		Version:  a.KongVersion,
 		LastPing: time.Now().Unix(),
+		// TODO: get the real running status and fill it here.
+		IngressControllerStatus: &IngressControllerStatus{
+			State: IngressControllerStateOperational,
+		},
 	}
 	resp, err := a.adminClient.CreateNode(createNodeReq)
 	if err != nil {
 		a.Logger.Error(err, "failed to create node")
+		return err
 	}
 	a.NodeID = resp.Item.ID
 	a.Logger.Info("created node for KIC", "cluster_id", a.ClusterID, "node_id", a.NodeID)
@@ -64,7 +87,11 @@ func (a *RuntimeInstanceAgent) updateNode() error {
 		Type:     NodeTypeIngressController,
 		Version:  a.KongVersion,
 		LastPing: time.Now().Unix(),
-		// TODO: fill in config hash & compatibliity status.
+		// TODO: fill in config hash.
+		// TODO: get the real running status and fill it here.
+		IngressControllerStatus: &IngressControllerStatus{
+			State: IngressControllerStateOperational,
+		},
 	}
 	_, err := a.adminClient.UpdateNode(a.NodeID, updateNodeReq)
 	if err != nil {
@@ -143,6 +170,10 @@ func (a *RuntimeInstanceAgent) updateKongProxyNodes() error {
 				// TODO: get kong version from the container, and use it here.
 				Version:  a.KongVersion,
 				LastPing: time.Now().Unix(),
+				// TODO: get the real compatibility status from kong container.
+				CompatabilityStatus: &CompatibilityStatus{
+					State: CompatibilityStateFullyCompatible,
+				},
 			}
 			resp, err := a.adminClient.CreateNode(createNodeReq)
 			if err != nil {
@@ -195,6 +226,8 @@ func (a *RuntimeInstanceAgent) updateNodeLoop() {
 }
 
 func (a *RuntimeInstanceAgent) Run() {
+	// TODO: run a leader election process, and only the instance
+	// which became the leader can run the following node
 	a.adminClient = &AdminClient{
 		Address:   a.Address,
 		ClusterID: a.ClusterID,
