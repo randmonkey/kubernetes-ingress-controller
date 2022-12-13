@@ -119,6 +119,15 @@ type KongClient struct {
 
 	// eventRecorder is used to record warning events for resource failures.
 	eventRecorder record.EventRecorder
+
+	// configHashChan is used to send config hash to konnect runtime instance agent.
+	configHashChan chan []byte
+
+	// translationFailureChan is used to send translation failures to konnect runtime instance agent.
+	translationFailureChan chan []failures.ResourceFailure
+
+	// kongUpdateErrChan is used to send errors on updating kong gateway to konnect runtime instance agent.
+	kongUpdateErrChan chan error
 }
 
 // NewKongClient provides a new KongClient object after connecting to the
@@ -132,20 +141,26 @@ func NewKongClient(
 	diagnostic util.ConfigDumpDiagnostic,
 	kongConfig sendconfig.Kong,
 	eventRecorder record.EventRecorder,
+	configHashChan chan []byte,
+	translationFailureChan chan []failures.ResourceFailure,
+	kongUpdateErrChan chan error,
 ) (*KongClient, error) {
 	// build the client object
 	cache := store.NewCacheStores()
 	c := &KongClient{
-		logger:             logger,
-		ingressClass:       ingressClass,
-		enableReverseSync:  enableReverseSync,
-		skipCACertificates: skipCACertificates,
-		requestTimeout:     timeout,
-		diagnostic:         diagnostic,
-		prometheusMetrics:  metrics.NewCtrlFuncMetrics(),
-		cache:              &cache,
-		kongConfig:         kongConfig,
-		eventRecorder:      eventRecorder,
+		logger:                 logger,
+		ingressClass:           ingressClass,
+		enableReverseSync:      enableReverseSync,
+		skipCACertificates:     skipCACertificates,
+		requestTimeout:         timeout,
+		diagnostic:             diagnostic,
+		prometheusMetrics:      metrics.NewCtrlFuncMetrics(),
+		cache:                  &cache,
+		kongConfig:             kongConfig,
+		eventRecorder:          eventRecorder,
+		configHashChan:         configHashChan,
+		translationFailureChan: translationFailureChan,
+		kongUpdateErrChan:      kongUpdateErrChan,
 	}
 
 	// download the kong root configuration (and validate connectivity to the proxy API)
@@ -343,6 +358,7 @@ func (c *KongClient) Update(ctx context.Context) error {
 		}).Inc()
 		c.logger.Debug("successfully built data-plane configuration")
 	}
+	c.translationFailureChan <- translationFailures
 
 	// generate the deck configuration to be applied to the admin API
 	c.logger.Debug("converting configuration to deck config")
@@ -400,8 +416,12 @@ func (c *KongClient) Update(ctx context.Context) error {
 				c.logger.Error("config diagnostic buffer full, dropping diagnostic config")
 			}
 		}
+		c.kongUpdateErrChan <- err
 		return err
 	}
+
+	c.kongUpdateErrChan <- nil
+	c.configHashChan <- newConfigSHA
 
 	// ship diagnostics if enabled
 	if c.diagnostic != (util.ConfigDumpDiagnostic{}) {

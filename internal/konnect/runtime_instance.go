@@ -2,6 +2,7 @@ package konnect
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kong/kubernetes-ingress-controller/v2/internal/dataplane/failures"
 )
 
 const (
@@ -22,9 +25,11 @@ const (
 )
 
 type RuntimeInstanceAgent struct {
-	Address     string
-	TLSCertPath string
-	TLSKeyPath  string
+	Address string
+	// mTLS certificate pair, not used in current Demo,
+	// but may be used for mTLS authentication and RG registration.
+	// TLSCertPath string
+	// TLSKeyPath  string
 
 	Hostname    string
 	NodeID      string
@@ -36,6 +41,15 @@ type RuntimeInstanceAgent struct {
 	// namespace of service of Kong gateway.
 	ServiceNamespace string
 	K8sClient        client.Client
+
+	currentConfigHash string
+	ConfigHashChan    chan []byte
+
+	translationFailures    []failures.ResourceFailure
+	TranslationFailureChan chan []failures.ResourceFailure
+
+	kongUpdateErr     error
+	KongUpdateErrChan chan error
 
 	Logger      logr.Logger
 	adminClient *AdminClient
@@ -82,16 +96,38 @@ func (a *RuntimeInstanceAgent) createNode() error {
 }
 
 func (a *RuntimeInstanceAgent) updateNode() error {
+	ingressControllerStatus := &IngressControllerStatus{
+		State: IngressControllerStateOperational,
+	}
+
+	if a.kongUpdateErr != nil {
+		ingressControllerStatus.State = IngressControllerStateInoperable
+	} else {
+		if len(a.translationFailures) > 0 {
+			ingressControllerStatus.State = IngressControllerStatePartialConfigFail
+		}
+	}
+	for _, translationFailure := range a.translationFailures {
+		objects := translationFailure.CausingObjects()
+		for _, object := range objects {
+			ingressControllerStatus.Issues = append(ingressControllerStatus.Issues, &KubernetesObjectIssue{
+				Group:       object.GetObjectKind().GroupVersionKind().Group,
+				Version:     object.GetObjectKind().GroupVersionKind().Version,
+				Kind:        object.GetObjectKind().GroupVersionKind().Kind,
+				Namespace:   object.GetNamespace(),
+				Name:        object.GetName(),
+				Description: translationFailure.Message(),
+			})
+		}
+	}
+
 	updateNodeReq := &UpdateNodeRequest{
-		Hostname: a.Hostname,
-		Type:     NodeTypeIngressController,
-		Version:  a.KongVersion,
-		LastPing: time.Now().Unix(),
-		// TODO: fill in config hash.
-		// TODO: get the real running status and fill it here.
-		IngressControllerStatus: &IngressControllerStatus{
-			State: IngressControllerStateOperational,
-		},
+		Hostname:                a.Hostname,
+		Type:                    NodeTypeIngressController,
+		Version:                 a.KongVersion,
+		LastPing:                time.Now().Unix(),
+		ConfigHash:              a.currentConfigHash,
+		IngressControllerStatus: ingressControllerStatus,
 	}
 	_, err := a.adminClient.UpdateNode(a.NodeID, updateNodeReq)
 	if err != nil {
@@ -165,11 +201,11 @@ func (a *RuntimeInstanceAgent) updateKongProxyNodes() error {
 		if !ok {
 			// create a node if the node with pod name as its hostname does not exist.
 			createNodeReq := &CreateNodeRequest{
-				Hostname: podName,
-				Type:     NodeTypeIngressProxy,
-				// TODO: get kong version from the container, and use it here.
-				Version:  a.KongVersion,
-				LastPing: time.Now().Unix(),
+				Hostname:   podName,
+				Type:       NodeTypeIngressProxy,
+				Version:    a.KongVersion,
+				LastPing:   time.Now().Unix(),
+				ConfigHash: a.currentConfigHash,
 				// TODO: get the real compatibility status from kong container.
 				CompatabilityStatus: &CompatibilityStatus{
 					State: CompatibilityStateFullyCompatible,
@@ -182,11 +218,11 @@ func (a *RuntimeInstanceAgent) updateKongProxyNodes() error {
 			a.Logger.Info("created node for kong proxy instance", "pod_name", podName, "node_id", resp.Item.ID, "cluster_id", a.ClusterID)
 		} else {
 			updateNodeReq := &UpdateNodeRequest{
-				Hostname: podName,
-				Type:     NodeTypeIngressProxy,
-				// TODO: get kong version from the container, and use it here.
-				Version:  a.KongVersion,
-				LastPing: time.Now().Unix(),
+				Hostname:   podName,
+				Type:       NodeTypeIngressProxy,
+				Version:    a.KongVersion,
+				LastPing:   time.Now().Unix(),
+				ConfigHash: a.currentConfigHash,
 			}
 			_, err := a.adminClient.UpdateNode(nodeID, updateNodeReq)
 			if err != nil {
@@ -225,6 +261,31 @@ func (a *RuntimeInstanceAgent) updateNodeLoop() {
 	}
 }
 
+func (a *RuntimeInstanceAgent) receiveFromManager() {
+	for {
+		select {
+		// receive config hash
+		case hashSum := <-a.ConfigHashChan:
+			hashStr := hex.EncodeToString(hashSum)
+			a.Logger.Info("updated config hash", "hash", hashStr)
+			if len(hashStr) > 32 {
+				hashStr = hashStr[:32]
+			}
+			a.currentConfigHash = hashStr
+		// receive translation failures
+		case translationFailures := <-a.TranslationFailureChan:
+			a.Logger.Info(fmt.Sprintf("%d translation failures", len(translationFailures)))
+			a.translationFailures = translationFailures
+		// receive errors on kong config
+		case updateErr := <-a.KongUpdateErrChan:
+			if updateErr != nil {
+				a.Logger.Info("failed to update config on Kong", "error", updateErr)
+			}
+			a.kongUpdateErr = updateErr
+		}
+	}
+}
+
 func (a *RuntimeInstanceAgent) Run() {
 	// TODO: run a leader election process, and only the instance
 	// which became the leader can run the following node
@@ -240,4 +301,5 @@ func (a *RuntimeInstanceAgent) Run() {
 	}
 
 	go a.updateNodeLoop()
+	go a.receiveFromManager()
 }

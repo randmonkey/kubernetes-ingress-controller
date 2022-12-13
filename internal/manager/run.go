@@ -26,6 +26,7 @@ import (
 
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/controllers/gateway"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/dataplane"
+	"github.com/kong/kubernetes-ingress-controller/v2/internal/dataplane/failures"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/konnect"
 	"github.com/kong/kubernetes-ingress-controller/v2/internal/manager/metadata"
 	mgrutils "github.com/kong/kubernetes-ingress-controller/v2/internal/manager/utils"
@@ -145,6 +146,13 @@ func Run(ctx context.Context, c *Config, diagnostic util.ConfigDumpDiagnostic, d
 		return fmt.Errorf("%f is not a valid number of seconds to the timeout config for the kong client: %w", c.ProxyTimeoutSeconds, err)
 	}
 
+	// configHashChan is used to send config hash from Kong client to runtime agent.
+	configHashChan := make(chan []byte, 16)
+	// translationFailureChan is used to send translation failures from Kong client to runtime agent.
+	translationFailureChan := make(chan []failures.ResourceFailure, 4)
+	// kongUpdateErrChan is used to send translation failures from Kong client to runtime agent.
+	kongUpdateErrChan := make(chan error, 1)
+
 	eventRecorder := mgr.GetEventRecorderFor(KongClientEventRecorderComponentName)
 	dataplaneClient, err := dataplane.NewKongClient(
 		deprecatedLogger,
@@ -155,6 +163,9 @@ func Run(ctx context.Context, c *Config, diagnostic util.ConfigDumpDiagnostic, d
 		diagnostic,
 		kongConfig,
 		eventRecorder,
+		configHashChan,
+		translationFailureChan,
+		kongUpdateErrChan,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize kong data-plane client: %w", err)
@@ -180,17 +191,21 @@ func Run(ctx context.Context, c *Config, diagnostic util.ConfigDumpDiagnostic, d
 			konnectRILogger.Error(fmt.Errorf("publish service is invalid, expecting <namespace>/<name>"), "service", c.PublishService)
 		}
 		agent := &konnect.RuntimeInstanceAgent{
-			Address:     os.Getenv("KONNECT_CONTROL_PLANE_ADDRESS"),
-			TLSCertPath: os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.crt",
-			TLSKeyPath:  os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.key",
+			Address: os.Getenv("KONNECT_CONTROL_PLANE_ADDRESS"),
+			// TLSCertPath: os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.crt",
+			// TLSKeyPath:  os.Getenv("KONNECT_CLUSTER_CERTIFICATE_DIR") + "/tls.key",
 			ClusterID:   os.Getenv("KONNECT_CLUSTER_ID"),
 			Hostname:    hostname,
-			KongVersion: "3.0.1.0",
+			KongVersion: versions.GetKongVersion().Full().String(),
 			Logger:      konnectRILogger,
 
 			ServiceName:      serviceParts[1],
 			ServiceNamespace: serviceParts[0],
 			K8sClient:        mgr.GetClient(),
+
+			ConfigHashChan:         configHashChan,
+			TranslationFailureChan: translationFailureChan,
+			KongUpdateErrChan:      kongUpdateErrChan,
 		}
 		agent.Run()
 	}
