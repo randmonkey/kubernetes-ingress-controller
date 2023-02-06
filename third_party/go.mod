@@ -7,7 +7,7 @@ require (
 	github.com/go-delve/delve v1.20.1
 	github.com/golangci/golangci-lint v1.50.1
 	gotest.tools/gotestsum v1.8.2
-	honnef.co/go/tools v0.3.3
+	honnef.co/go/tools v0.4.0
 	k8s.io/code-generator v0.26.0
 	sigs.k8s.io/controller-tools v0.11.1
 	sigs.k8s.io/kustomize/kustomize/v4 v4.5.7
@@ -207,14 +207,14 @@ require (
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
-	golang.org/x/exp/typeparams v0.0.0-20220827204233-334a2380cb91 // indirect
+	golang.org/x/exp/typeparams v0.0.0-20221208152030-732eee02a75a // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.3.0 // indirect
 	golang.org/x/term v0.3.0 // indirect
 	golang.org/x/text v0.5.0 // indirect
-	golang.org/x/tools v0.4.0 // indirect
+	golang.org/x/tools v0.4.1-0.20221208213631-3f74d914ae6d // indirect
 	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
