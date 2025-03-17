@@ -2,13 +2,13 @@ module github.com/kong/kubernetes-ingress-controller/v3
 
 go 1.24.0
 
-// TODO: this is disabled by FOSSA action doesn't support go 1.21's toolchain clause:
+toolchain go1.24.1
+
 //
 //  Error parsing file: /home/runner/work/kubernetes-ingress-controller/kubernetes-ingress-controller/go.mod.
 //
 //      /home/runner/work/kubernetes-ingress-controller/kubernetes-ingress-controller/go.mod:5:1:
 //        |
-//      5 | toolchain go1.21.0
 //        | ^
 //      unexpected 't'
 //      expecting "exclude", "go", "replace", "require", "retract", or end of input
@@ -16,7 +16,6 @@ go 1.24.0
 //
 // Related issue: https://github.com/Kong/kubernetes-ingress-controller/issues/4635
 //
-// toolchain go1.21.0
 
 require (
 	cloud.google.com/go/container v1.42.2
@@ -67,7 +66,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.19.0 // indirect
+	cel.dev/expr v0.19.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
@@ -226,7 +225,7 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250124145028-65684f501c47 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250227231956-55c901821b1e // indirect
-	google.golang.org/grpc v1.70.0
+	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
